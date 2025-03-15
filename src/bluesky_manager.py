@@ -24,7 +24,7 @@ class BlueSkyManager:
             str: The file path of the stored JSON file.
         """
         url = "https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts"
-        params = {"q": query, "limit": 20, "lang": "en"}
+        params = {"q": query, "limit": 100, "lang": "en"}
 
         response = requests.get(url, params=params)
         if response.status_code == 200:

@@ -116,3 +116,26 @@ class DataProcessor:
         if filter_rare:
             frequency = {word: count for word, count in frequency.items() if count > 1}
         return dict(frequency)
+
+    def analyze_text_length_sentiment(self) -> pd.DataFrame:
+        """
+        Analyzes the relationship between text length and sentiment.
+        Returns a DataFrame with:
+            - 'text_length': word count of the cleaned text
+            - 'net_sentiment': sentiment score as positive (if label is 'POSITIVE')
+              or negative (if label is 'NEGATIVE').
+        """
+        data = []
+        for post in self.posts:
+            # Use cleaned_text if available
+            text = post.get("cleaned_text", post.get("text", ""))
+            word_count = len(text.split())
+            sentiment = post.get("sentiment", None)
+            confidence = post.get("confidence", None)
+            if sentiment is not None and confidence is not None:
+                # Compute net sentiment: positive score for POSITIVE, negative for NEGATIVE
+                net_sentiment = (
+                    confidence if sentiment.upper() == "POSITIVE" else -confidence
+                )
+                data.append({"text_length": word_count, "net_sentiment": net_sentiment})
+        return pd.DataFrame(data)

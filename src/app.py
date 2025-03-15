@@ -68,6 +68,10 @@ def main():
         word_frequency = processor.get_word_frequency()
         print("\nWord Frequency:")
         print(word_frequency)
+
+        length_sentiment_df = processor.analyze_text_length_sentiment()
+        print("\nText Length vs. Sentiment Data:")
+        print(length_sentiment_df)
     else:
         print("No posts found in the JSON file.")
 

@@ -6,12 +6,12 @@ from data_processor import DataProcessor
 
 
 def main():
-    # Retrieve posts using BlueSkyManagerd
+    # Retrieve posts using BlueSkyManager
     bs_manager = BlueSkyManager()
 
     bs_manager.login()
 
-    file_path = bs_manager.get_posts("Macron")
+    file_path = bs_manager.get_posts("Macron", pages=1)
     print(f"Posts saved to: {file_path}")
 
     # Load the JSON file containing posts

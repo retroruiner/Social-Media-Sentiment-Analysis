@@ -99,19 +99,31 @@ class DataProcessor:
         Only words with length >= min_word_length and not in the stopwords list are considered.
         Optionally filters out words that occur only once if filter_rare is True.
         """
+        from nltk.tokenize import word_tokenize
+        from nltk.stem import WordNetLemmatizer
+        import string
+
+        lemmatizer = WordNetLemmatizer()
         stop_words = set(stopwords.words("english"))
         words = []
+
         for post in self.posts:
             # Use cleaned_text if present, otherwise use text
             text = post.get("cleaned_text", post.get("text", ""))
-            tokens = text.split()  # Basic tokenization
-            words.extend(
-                [
-                    word.lower()
-                    for word in tokens
-                    if len(word) >= min_word_length and word.lower() not in stop_words
-                ]
-            )
+            tokens = word_tokenize(text)  # Robust tokenization
+            for token in tokens:
+                token = token.lower()
+                # Skip tokens that are punctuation or not meeting criteria
+                if (
+                    token in string.punctuation
+                    or token in stop_words
+                    or len(token) < min_word_length
+                ):
+                    continue
+                # Lemmatize token to normalize different forms of the same word
+                lemma = lemmatizer.lemmatize(token)
+                words.append(lemma)
+
         frequency = Counter(words)
         if filter_rare:
             frequency = {word: count for word, count in frequency.items() if count > 1}
@@ -139,3 +151,29 @@ class DataProcessor:
                 )
                 data.append({"text_length": word_count, "net_sentiment": net_sentiment})
         return pd.DataFrame(data)
+
+    def filter_by_keywords(self, keywords: list) -> list:
+        """
+        Returns posts that contain any of the specified keywords in their text.
+        Args:
+            keywords (list): A list of keywords to look for in the post text.
+        """
+        filtered_posts = []
+        for post in self.posts:
+            # Use cleaned_text if available, otherwise fallback to raw text
+            text = post.get("cleaned_text", post.get("text", "")).lower()
+            if any(keyword.lower() in text for keyword in keywords):
+                filtered_posts.append(post)
+        return filtered_posts
+
+    def filter_by_sentiment(self, sentiment: str) -> list:
+        """
+        Returns posts that match the specified sentiment.
+        Args:
+            sentiment (str): The sentiment to filter by (e.g., "POSITIVE" or "NEGATIVE").
+        """
+        return [
+            post
+            for post in self.posts
+            if post.get("sentiment", "").upper() == sentiment.upper()
+        ]

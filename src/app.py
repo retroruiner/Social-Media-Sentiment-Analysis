@@ -7,6 +7,9 @@ from sentiment_analyzer import SentimentAnalyzer
 def main():
     # Retrieve posts using BlueSkyManager
     bs_manager = BlueSkyManager()
+
+    bs_manager.login()
+
     file_path = bs_manager.get_posts("Macron")
     print(f"Posts saved to: {file_path}")
 

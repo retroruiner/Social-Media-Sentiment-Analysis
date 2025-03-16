@@ -8,6 +8,9 @@ from data_processor import DataProcessor
 def main():
     # Retrieve posts using BlueSkyManagerd
     bs_manager = BlueSkyManager()
+
+    bs_manager.login()
+
     file_path = bs_manager.get_posts("Macron")
     print(f"Posts saved to: {file_path}")
 

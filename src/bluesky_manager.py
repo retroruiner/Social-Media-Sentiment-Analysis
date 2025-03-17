@@ -1,7 +1,8 @@
 import os
-from atproto import Client
 import requests
+from translate_posts import PostTranslator
 from utils.json_manager import JsonFileManager
+import asyncio
 
 
 class BlueSkyManager:
@@ -69,7 +70,7 @@ class BlueSkyManager:
                 break
 
             json_data = response.json()
-            filtered_response = self.filter_posts_data(json_data)
+            filtered_response = self.filter_and_translate_posts(json_data)
             posts = filtered_response.get("posts", [])
 
             if not posts:
@@ -90,25 +91,46 @@ class BlueSkyManager:
         file_path = self.json_manager.store_json(final_json_response, filename)
         return file_path
 
-    def filter_posts_data(self, data: dict) -> dict:
+    def filter_and_translate_posts(self, data: dict) -> dict:
         """
-        Filters the posts data to include only the text, creation time, language, and author handle.
+        Filters the posts data to include only the cleaned text (or fallback to original text), creation time, and author handle.
+        For each post, uses PostTranslator to detect and translate non-English posts.
+        Posts that needed translation will have their language set to 'machine-en'; otherwise 'en'.
 
         Args:
             data (dict): The original JSON data containing posts.
 
         Returns:
-            dict: A dictionary with the filtered posts.
+            dict: A dictionary with the filtered and translated posts.
         """
+        translator = PostTranslator()
+        posts = data.get("posts", [])
         filtered_posts = []
-        for post in data.get("posts", []):
+        tasks = []
+
+        # Create a list of translation tasks using cleaned_text when available
+        for post in posts:
+            record = post.get("record", {})
+            # Use cleaned_text if present, otherwise fallback to the original text
+            text = record.get("cleaned_text", record.get("text", ""))
+            tasks.append(translator.translate_text(text))
+
+        async def run_translations():
+            return await asyncio.gather(*tasks)
+
+        # Run all translation tasks concurrently
+        translations = asyncio.run(run_translations())
+
+        # Reconstruct posts with the translation results
+        for post, translation_result in zip(posts, translations):
             record = post.get("record", {})
             author = post.get("author", {})
             filtered_post = {
-                "text": record.get("text", ""),
+                "text": translation_result["text"],
                 "createdAt": record.get("createdAt", ""),
-                "language": record.get("langs", [None])[0],
                 "author": author.get("handle", ""),
+                "language": translation_result["language"],
             }
             filtered_posts.append(filtered_post)
+
         return {"posts": filtered_posts}

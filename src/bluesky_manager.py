@@ -17,12 +17,12 @@ class BlueSkyManager:
 
     def login(self):
         """
-        Logs into the BlueSky account using provided credentials and stores the access token.
-
-        Args:
-            username (str): The username or handle of the BlueSky account.
-            password (str): The password for the BlueSky account.
+        Logs into the BlueSky account only if an access token does not already exist.
         """
+        if self.access_token:
+            print("Access token already exists. Skipping login.")
+            return
+
         username = os.getenv("BLUESKY_USERNAME")
         password = os.getenv("BLUESKY_PASSWORD")
 
@@ -40,23 +40,27 @@ class BlueSkyManager:
 
     def get_posts(self, query: str, pages: int = 5) -> str:
         """
-        Retrieves posts from the BlueSky feed based on a query, handles pagination,
-        filters the data, and then stores the result as a JSON file using JsonFileManager.
-
-        Args:
-            query (str): The search query for posts.
-            pages (int): Number of pages to fetch (default is 5).
-
-        Returns:
-            str: The file path of the stored JSON file.
+        Retrieves posts from the BlueSky feed based on a query.
+        If an existing file is found, it is used instead of fetching new data.
+        Handles token expiration by retrying once after re-login.
         """
+        existing_file_path = self.json_manager.get_existing_file_path(query)
+
+        if existing_file_path:
+            print(f"Using existing data file: {existing_file_path}")
+            return (
+                existing_file_path  # Use the existing file instead of fetching new data
+            )
+
         url = "https://api.bsky.app/xrpc/app.bsky.feed.searchPosts"
         headers = {}
+
         if self.access_token:
             headers["Authorization"] = f"Bearer {self.access_token}"
 
         all_filtered_posts = []
         cursor = None
+        retry_attempted = False
 
         for _ in range(pages):
             params = {"q": query, "limit": 100, "lang": "en"}
@@ -64,6 +68,13 @@ class BlueSkyManager:
                 params["cursor"] = cursor
 
             response = requests.get(url, params=params, headers=headers)
+
+            if response.status_code == 403 and not retry_attempted:
+                print("Access token expired. Re-authenticating...")
+                self.login()
+                headers["Authorization"] = f"Bearer {self.access_token}"
+                retry_attempted = True
+                continue
 
             if response.status_code != 200:
                 print(f"Error fetching posts: {response.status_code} - {response.text}")
@@ -74,17 +85,13 @@ class BlueSkyManager:
             posts = filtered_response.get("posts", [])
 
             if not posts:
-                # No more posts available
-                break
+                break  # No more posts available
 
             all_filtered_posts.extend(posts)
-
-            # Update cursor for next page
             cursor = json_data.get("cursor")
 
             if not cursor:
-                # No further pages available
-                break
+                break  # No further pages available
 
         final_json_response = {"posts": all_filtered_posts}
         filename = self.json_manager.generate_filename(query)
@@ -93,35 +100,23 @@ class BlueSkyManager:
 
     def filter_and_translate_posts(self, data: dict) -> dict:
         """
-        Filters the posts data to include only the cleaned text (or fallback to original text), creation time, and author handle.
-        For each post, uses PostTranslator to detect and translate non-English posts.
-        Posts that needed translation will have their language set to 'machine-en'; otherwise 'en'.
-
-        Args:
-            data (dict): The original JSON data containing posts.
-
-        Returns:
-            dict: A dictionary with the filtered and translated posts.
+        Filters and translates posts.
         """
         translator = PostTranslator()
         posts = data.get("posts", [])
         filtered_posts = []
         tasks = []
 
-        # Create a list of translation tasks using cleaned_text when available
         for post in posts:
             record = post.get("record", {})
-            # Use cleaned_text if present, otherwise fallback to the original text
             text = record.get("cleaned_text", record.get("text", ""))
             tasks.append(translator.translate_text(text))
 
         async def run_translations():
             return await asyncio.gather(*tasks)
 
-        # Run all translation tasks concurrently
         translations = asyncio.run(run_translations())
 
-        # Reconstruct posts with the translation results
         for post, translation_result in zip(posts, translations):
             record = post.get("record", {})
             author = post.get("author", {})

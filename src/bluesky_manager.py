@@ -1,6 +1,6 @@
 import os
 import requests
-from translate_posts import PostTranslator
+from utils.translate_posts import PostTranslator
 from utils.json_manager import JsonFileManager
 import asyncio
 

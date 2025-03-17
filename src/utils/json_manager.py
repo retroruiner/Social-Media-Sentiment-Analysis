@@ -2,6 +2,7 @@ import json
 import os
 import uuid
 import datetime
+import glob
 
 
 class JsonFileManager:
@@ -49,3 +50,26 @@ class JsonFileManager:
         timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         unique_id = uuid.uuid4().hex[:8]
         return f"{sanitized_keyword}_{timestamp}_{unique_id}.json"
+
+    def get_existing_file_path(self, keyword: str) -> str:
+        """
+        Searches for an existing JSON file that matches the given keyword in the data folder.
+        Returns the latest matching file if found.
+
+        Args:
+            keyword (str): The search keyword for matching filenames.
+
+        Returns:
+            str: The path to the latest matching file if found, else None.
+        """
+        sanitized_keyword = keyword.strip().replace(" ", "_").lower()
+        search_pattern = os.path.join(self.data_folder, f"{sanitized_keyword}_*.json")
+        matching_files = glob.glob(search_pattern)
+
+        if not matching_files:
+            return None
+
+        # Sort files by modified time (newest first)
+        matching_files.sort(key=os.path.getmtime, reverse=True)
+
+        return matching_files[0]

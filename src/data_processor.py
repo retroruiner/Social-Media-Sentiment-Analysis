@@ -133,54 +133,40 @@ class DataProcessor:
     ) -> dict:
         """
         Returns a dictionary of word frequencies from cleaned posts.
-        - Filters out short, rare, or unimportant words.
-        - Uses a custom stopword list.
+        - Removes stopwords, punctuation, short words, and numbers.
+        - Applies lemmatization.
+        - Optionally filters out rare (count == 1) words.
         """
 
         lemmatizer = WordNetLemmatizer()
-        custom_stopwords = set(stopwords.words("english")).union(
-            {
-                "could",
-                "would",
-                "also",
-                "first",
-                "one",
-                "two",
-                "new",
-                "old",
-                "said",
-                "like",
-                "make",
-                "thing",
-                "time",
-                "see",
-                "get",
-                "many",
-                "well",
-                "back",
-                "year",
-                "years",
-            }
-        )
+        stop_words = set(stopwords.words("english"))
+
         words = []
+
         for post in self.posts:
             text = post.get("cleaned_text", post.get("text", ""))
             tokens = word_tokenize(text)
+
             for token in tokens:
-                token = token.lower()
+                token = token.lower().strip()
+
+                # Filter unwanted tokens
                 if (
-                    token in string.punctuation
-                    or token in custom_stopwords
+                    token in stop_words
+                    or token in string.punctuation
                     or len(token) < min_word_length
-                    or any(char.isdigit() for char in token)
+                    or not token.isalpha()
                 ):
                     continue
+
                 lemma = lemmatizer.lemmatize(token)
                 words.append(lemma)
 
         frequency = Counter(words)
+
         if filter_rare:
             frequency = {word: count for word, count in frequency.items() if count > 1}
+
         logging.info(f"Calculated word frequency for {len(frequency)} words.")
         return dict(frequency)
 

@@ -1,4 +1,8 @@
+import logging
+import torch
 from transformers import pipeline
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
 
 class SentimentAnalyzer:
@@ -16,7 +20,19 @@ class SentimentAnalyzer:
             model_name (str): The Hugging Face model name to use for sentiment analysis.
                               Defaults to 'distilbert-base-uncased-finetuned-sst-2-english'.
         """
-        self.pipeline = pipeline("sentiment-analysis", model=model_name)
+        logging.info(f"Initializing SentimentAnalyzer with model: {model_name}")
+
+        # Check if GPU is available and set device accordingly
+        device = 0 if torch.cuda.is_available() else -1
+        logging.info(f"CUDA: {torch.cuda.is_available()}")
+        logging.info(f"PyTorch version: {torch.__version__}")
+        if torch.cuda.is_available():
+            logging.info(f"GPU count: {torch.cuda.device_count()}")
+            logging.info(f"GPU name: {torch.cuda.get_device_name(0)}")
+        logging.info(f"Using device: {'GPU' if device == 0 else 'CPU'}")
+
+        self.pipeline = pipeline("sentiment-analysis", model=model_name, device=device)
+        logging.info("Sentiment analysis pipeline initialized successfully.")
 
     def analyze_texts(self, texts: list[str]) -> list:
         """
@@ -28,5 +44,12 @@ class SentimentAnalyzer:
         Returns:
             list: A list of dictionaries with sentiment analysis results for each text.
         """
-        results = self.pipeline(texts)
+        logging.info(f"Analyzing sentiment for {len(texts)} texts.")
+        try:
+            # For better GPU performance with multiple texts, specify batch_size
+            results = self.pipeline(texts, batch_size=8)
+            logging.info("Sentiment analysis completed successfully.")
+        except Exception as e:
+            logging.error(f"Error during sentiment analysis: {e}")
+            results = []
         return results

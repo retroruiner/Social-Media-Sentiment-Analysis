@@ -3,6 +3,10 @@ import os
 import uuid
 import datetime
 import glob
+import logging
+
+# Configure logging if not already configured elsewhere in your application
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
 
 class JsonFileManager:
@@ -16,6 +20,7 @@ class JsonFileManager:
 
         # Ensure the target folder exists
         os.makedirs(self.data_folder, exist_ok=True)
+        logging.info(f"Data folder set to: {self.data_folder}")
 
     def store_json(self, data: dict, filename: str, indent: int = 4) -> str:
         """
@@ -30,9 +35,15 @@ class JsonFileManager:
             str: The path to the saved file.
         """
         file_path = os.path.join(self.data_folder, filename)
+        logging.info(f"Storing JSON data to file: {file_path}")
 
-        with open(file_path, "w") as outfile:
-            json.dump(data, outfile, indent=indent)
+        try:
+            with open(file_path, "w") as outfile:
+                json.dump(data, outfile, indent=indent)
+            logging.info("JSON data stored successfully.")
+        except Exception as e:
+            logging.error(f"Error storing JSON data to {file_path}: {e}")
+            raise
 
         return file_path
 
@@ -49,7 +60,9 @@ class JsonFileManager:
         sanitized_keyword = keyword.strip().replace(" ", "_").lower()
         timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         unique_id = uuid.uuid4().hex[:8]
-        return f"{sanitized_keyword}_{timestamp}_{unique_id}.json"
+        filename = f"{sanitized_keyword}_{timestamp}_{unique_id}.json"
+        logging.info(f"Generated filename: {filename}")
+        return filename
 
     def get_existing_file_path(self, keyword: str) -> str:
         """
@@ -65,11 +78,14 @@ class JsonFileManager:
         sanitized_keyword = keyword.strip().replace(" ", "_").lower()
         search_pattern = os.path.join(self.data_folder, f"{sanitized_keyword}_*.json")
         matching_files = glob.glob(search_pattern)
+        logging.info(f"Searching for files with pattern: {search_pattern}")
 
         if not matching_files:
+            logging.info("No matching files found.")
             return None
 
         # Sort files by modified time (newest first)
         matching_files.sort(key=os.path.getmtime, reverse=True)
-
-        return matching_files[0]
+        latest_file = matching_files[0]
+        logging.info(f"Found existing file: {latest_file}")
+        return latest_file

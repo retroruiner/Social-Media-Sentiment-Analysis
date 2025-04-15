@@ -17,4 +17,5 @@ server.register_blueprint(api, url_prefix="/api")
 dash_app.server = server
 
 if __name__ == "__main__":
-    server.run(debug=True)
+    # This block is only used when running locally
+    server.run(debug=True, host="0.0.0.0", port=5000)

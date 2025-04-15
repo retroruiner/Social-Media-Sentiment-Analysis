@@ -2,11 +2,13 @@ import os
 import requests
 import asyncio
 import logging
+from datetime import datetime, timezone
 from utils.translate_posts import PostTranslator
 from utils.json_manager import JsonFileManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
+# Reduce logging noise from dependencies
 for noisy_lib in ["httpx", "httpcore", "urllib3", "googletrans", "asyncio"]:
     logging.getLogger(noisy_lib).setLevel(logging.WARNING)
 
@@ -46,14 +48,19 @@ class BlueSkyManager:
         response.raise_for_status()
         session = response.json()
         self.access_token = session["accessJwt"]
-        logging.info(f"Logged in successfully. Access JWT obtained.")
+        logging.info("Logged in successfully. Access JWT obtained.")
 
     def get_posts(self, query: str, pages: int = 5) -> str:
         """
         Retrieves posts from the BlueSky feed based on a query.
+        Only posts from the current day are kept. As soon as a post from a previous day
+        is encountered in a page, the fetching stops.
         If an existing file is found, it is used instead of fetching new data.
         Handles token expiration by retrying once after re-login.
         """
+        self.json_manager.cleanup_old_files(keep_days=1)
+
+        # Check for an existing file to avoid redundant fetching
         existing_file_path = self.json_manager.get_existing_file_path(query)
         if existing_file_path:
             logging.info(f"Using existing data file: {existing_file_path}")
@@ -68,8 +75,17 @@ class BlueSkyManager:
         cursor = None
         retry_attempted = False
 
-        logging.info(f"Fetching posts for query: '{query}' with {pages} pages.")
+        # Determine the current date (in UTC)
+        current_date = datetime.now(timezone.utc).date()
+        logging.info(
+            f"Fetching posts for query '{query}' (only for {current_date}) with {pages} pages."
+        )
+
+        stop_fetching = False
         for page in range(pages):
+            if stop_fetching:
+                break
+
             params = {"q": query, "limit": 100, "lang": "en"}
             if cursor:
                 params["cursor"] = cursor
@@ -79,6 +95,7 @@ class BlueSkyManager:
                 f"Page {page+1}: Received response with status {response.status_code}"
             )
 
+            # If token expired, re-login once
             if response.status_code == 403 and not retry_attempted:
                 logging.warning("Access token expired. Re-authenticating...")
                 self.login()
@@ -99,11 +116,35 @@ class BlueSkyManager:
                 f"Page {page+1}: Retrieved {len(posts)} posts after filtering."
             )
 
-            if not posts:
-                logging.info("No more posts available.")
+            current_day_posts = []
+            # Process each post, and stop fetching further if a post is older than today.
+            for post in posts:
+                created_str = post.get("createdAt", "")
+                if created_str.endswith("Z"):
+                    created_dt = datetime.fromisoformat(
+                        created_str.replace("Z", "+00:00")
+                    )
+                else:
+                    created_dt = datetime.fromisoformat(created_str)
+
+                # If the post was created today, keep it; otherwise, flag to stop further fetching.
+                if created_dt.date() == current_date:
+                    current_day_posts.append(post)
+                else:
+                    stop_fetching = True
+                    break
+
+            logging.info(
+                f"Page {page+1}: Added {len(current_day_posts)} posts from current day."
+            )
+            all_filtered_posts.extend(current_day_posts)
+
+            if stop_fetching:
+                logging.info(
+                    "Encountered posts from a previous day. Stopping further fetching."
+                )
                 break
 
-            all_filtered_posts.extend(posts)
             cursor = json_data.get("cursor")
             if not cursor:
                 logging.info("No further pages available (cursor is None).")

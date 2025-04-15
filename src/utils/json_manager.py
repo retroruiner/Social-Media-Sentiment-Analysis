@@ -1,9 +1,9 @@
 import json
 import os
-import uuid
 import datetime
 import glob
 import logging
+import tempfile
 
 # Configure logging if not already configured elsewhere in your application
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
@@ -11,28 +11,41 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(mes
 
 class JsonFileManager:
     def __init__(self, data_folder: str = None):
-        # If no data folder is specified, set the default folder relative to the script
-        if data_folder is None:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            self.data_folder = os.path.join(script_dir, "../..", "data")
-        else:
-            self.data_folder = data_folder
-
-        # Ensure the target folder exists
+        """
+        Initializes the file manager with a target folder.
+        Defaults to the system's temporary directory (e.g., /tmp on Render).
+        """
+        self.data_folder = data_folder or tempfile.gettempdir()
         os.makedirs(self.data_folder, exist_ok=True)
         logging.info(f"Data folder set to: {self.data_folder}")
 
+    def generate_filename(self, keyword: str) -> str:
+        """
+        Generates a filename based on the keyword and current date (1 file/day/keyword).
+
+        Args:
+            keyword (str): The keyword for the file.
+
+        Returns:
+            str: A consistent filename for the current day.
+        """
+        sanitized_keyword = keyword.strip().replace(" ", "_").lower()
+        date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        filename = f"{sanitized_keyword}_{date_str}.json"
+        logging.info(f"Generated filename: {filename}")
+        return filename
+
     def store_json(self, data: dict, filename: str, indent: int = 4) -> str:
         """
-        Stores the given dictionary as a JSON file in the data folder.
+        Saves a dictionary to a JSON file in the data folder.
 
         Args:
             data (dict): The data to store.
-            filename (str): The name of the file.
-            indent (int): The indentation level for the JSON file.
+            filename (str): The target file name.
+            indent (int): JSON formatting indent level.
 
         Returns:
-            str: The path to the saved file.
+            str: Path to the saved file.
         """
         file_path = os.path.join(self.data_folder, filename)
         logging.info(f"Storing JSON data to file: {file_path}")
@@ -47,45 +60,48 @@ class JsonFileManager:
 
         return file_path
 
-    def generate_filename(self, keyword: str) -> str:
-        """
-        Generates a unique filename based on a keyword, current timestamp, and a unique identifier.
-
-        Args:
-            keyword (str): The keyword to include in the filename.
-
-        Returns:
-            str: A unique filename string.
-        """
-        sanitized_keyword = keyword.strip().replace(" ", "_").lower()
-        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        unique_id = uuid.uuid4().hex[:8]
-        filename = f"{sanitized_keyword}_{timestamp}_{unique_id}.json"
-        logging.info(f"Generated filename: {filename}")
-        return filename
-
     def get_existing_file_path(self, keyword: str) -> str:
         """
-        Searches for an existing JSON file that matches the given keyword in the data folder.
-        Returns the latest matching file if found.
+        Looks for an existing file for the current day based on the keyword.
 
         Args:
-            keyword (str): The search keyword for matching filenames.
+            keyword (str): The keyword to search for.
 
         Returns:
-            str: The path to the latest matching file if found, else None.
+            str: File path if found, else None.
         """
-        sanitized_keyword = keyword.strip().replace(" ", "_").lower()
-        search_pattern = os.path.join(self.data_folder, f"{sanitized_keyword}_*.json")
-        matching_files = glob.glob(search_pattern)
-        logging.info(f"Searching for files with pattern: {search_pattern}")
+        filename = self.generate_filename(keyword)
+        file_path = os.path.join(self.data_folder, filename)
+        if os.path.exists(file_path):
+            logging.info(f"Found existing file for today: {file_path}")
+            return file_path
 
-        if not matching_files:
-            logging.info("No matching files found.")
-            return None
+        logging.info("No existing file found for today.")
+        return None
 
-        # Sort files by modified time (newest first)
-        matching_files.sort(key=os.path.getmtime, reverse=True)
-        latest_file = matching_files[0]
-        logging.info(f"Found existing file: {latest_file}")
-        return latest_file
+    def cleanup_old_files(self, keep_days: int = 1):
+        """
+        Deletes JSON files older than the specified number of days.
+
+        Args:
+            keep_days (int): Number of recent days to retain files for.
+        """
+        now = datetime.datetime.now()
+        pattern = os.path.join(self.data_folder, "*.json")
+        old_files = 0
+
+        for file_path in glob.glob(pattern):
+            modified_time = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
+            age_days = (now - modified_time).days
+            if age_days > keep_days:
+                try:
+                    os.remove(file_path)
+                    old_files += 1
+                    logging.info(f"Deleted old file: {file_path}")
+                except Exception as e:
+                    logging.warning(f"Failed to delete {file_path}: {e}")
+
+        if old_files:
+            logging.info(f"Cleanup complete. Removed {old_files} old file(s).")
+        else:
+            logging.info("No old files to clean up.")

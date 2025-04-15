@@ -1,3 +1,5 @@
+import json
+import os
 import requests
 import dash
 from dash import dcc, html
@@ -8,10 +10,10 @@ from wordcloud import WordCloud
 import base64
 from io import BytesIO
 
-# Flask API URL
-API_BASE_URL = "http://127.0.0.1:5000"
+# Read API_BASE_URL from the environment variable; default to relative URL '/api'
+API_BASE_URL = os.environ.get("API_BASE_URL", "/api")
 
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = dash.Dash(__name__, server=None, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.title = "Social Media Sentiment Dashboard"
 
 app.layout = dbc.Container(
@@ -20,6 +22,7 @@ app.layout = dbc.Container(
             "Social Media Sentiment Dashboard",
             className="text-center text-primary my-4 fw-bold",
         ),
+        # Input for on-demand analysis (optional)
         dbc.Row(
             [
                 dbc.Col(
@@ -33,7 +36,7 @@ app.layout = dbc.Container(
                 ),
                 dbc.Col(
                     html.Button(
-                        "Analyze",
+                        "Analyze Now",
                         id="fetch-button",
                         n_clicks=0,
                         className="btn btn-success w-100",
@@ -43,6 +46,14 @@ app.layout = dbc.Container(
             ],
             className="mb-4",
         ),
+        # Interval component to automatically refresh daily summary data (set here to update every 5 minutes)
+        dcc.Interval(
+            id="daily-summary-interval",
+            interval=24 * 60 * 60 * 1000,  # 24 hours in milliseconds
+            n_intervals=0,
+        ),
+        # Div that can hold historical data (optional, if you want to use hidden storage)
+        html.Div(id="daily-summary-store", style={"display": "none"}),
         dbc.Row(
             [
                 dbc.Col(
@@ -60,7 +71,6 @@ app.layout = dbc.Container(
             ],
             className="mb-4",
         ),
-        # Word Cloud Full Width
         dbc.Row(
             dbc.Col(
                 html.Div(
@@ -80,7 +90,6 @@ app.layout = dbc.Container(
             ),
             className="mb-4",
         ),
-        # Top Positive Words Full Width
         dbc.Row(
             dbc.Col(
                 dcc.Graph(id="top-words-positive", config={"displayModeBar": False}),
@@ -88,7 +97,6 @@ app.layout = dbc.Container(
             ),
             className="mb-4",
         ),
-        # Top Negative Words Full Width
         dbc.Row(
             dbc.Col(
                 dcc.Graph(id="top-words-negative", config={"displayModeBar": False}),
@@ -110,6 +118,7 @@ app.layout = dbc.Container(
 )
 
 
+# Callback for on-demand analysis (if needed)
 @app.callback(
     [
         dash.Output("sentiment-distribution", "figure"),
@@ -134,6 +143,8 @@ def update_graphs(n_clicks, query):
         f"{API_BASE_URL}/analyze_data", json={"posts": posts_response}
     ).json()
 
+    # Build charts (code as before)...
+    # Sentiment Distribution Pie Chart
     sentiment_df = pd.DataFrame(
         analysis_response["sentiment_distribution"].items(),
         columns=["Sentiment", "Count"],
@@ -147,6 +158,7 @@ def update_graphs(n_clicks, query):
         color_discrete_map={"POSITIVE": "green", "NEGATIVE": "red"},
     )
 
+    # Sentiment Over Time Line Chart
     sentiment_time_df = pd.DataFrame(analysis_response["sentiment_over_time"])
     x_col = "date" if "date" in sentiment_time_df else "hour"
     if x_col == "hour":
@@ -175,6 +187,7 @@ def update_graphs(n_clicks, query):
         legend_title=None,
     )
 
+    # Word Cloud Image
     word_freq = analysis_response["word_frequency"]
     wordcloud = WordCloud(
         width=900, height=400, background_color="black"
@@ -183,6 +196,7 @@ def update_graphs(n_clicks, query):
     wordcloud.to_image().save(img, format="PNG")
     wordcloud_src = "data:image/png;base64," + base64.b64encode(img.getvalue()).decode()
 
+    # Heatmap
     heatmap_df = pd.DataFrame(analysis_response["heatmap_data"]).T.fillna(0)
     ordered_days = [
         "Monday",
@@ -202,6 +216,7 @@ def update_graphs(n_clicks, query):
         color_continuous_scale="Viridis",
     )
 
+    # Top Words
     top_words = analysis_response["top_words_by_sentiment"]
     pos_words_df = pd.DataFrame(
         top_words["POSITIVE"].items(), columns=["Word", "Count"]
@@ -237,5 +252,21 @@ def update_graphs(n_clicks, query):
     )
 
 
-if __name__ == "__main__":
-    app.run(debug=True)
+# Callback to fetch daily summaries periodically
+@app.callback(
+    dash.Output("daily-summary-store", "children"),
+    [dash.Input("daily-summary-interval", "n_intervals")],
+)
+def update_daily_summary(n_intervals):
+    try:
+        # Call the /daily_summary endpoint to get historical data
+        resp = requests.get(f"{API_BASE_URL}/daily_summary")
+        if resp.status_code == 200:
+            daily_summary_data = resp.json()
+            # You can store this JSON in a hidden div or process it further.
+            return json.dumps(daily_summary_data)
+        else:
+            return dash.no_update
+    except Exception as e:
+        print(f"Error fetching daily summary: {e}")
+        return dash.no_update

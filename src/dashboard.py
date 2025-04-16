@@ -13,7 +13,7 @@ from io import BytesIO
 # Read API_BASE_URL from the environment variable; default to relative URL '/api'
 API_BASE_URL = os.environ.get("API_BASE_URL", "/api")
 
-app = dash.Dash(__name__, server=None, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = dash.Dash(__name__, server=False, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.title = "Social Media Sentiment Dashboard"
 
 app.layout = dbc.Container(

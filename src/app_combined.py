@@ -1,3 +1,4 @@
+import os
 from flask import Flask
 from flask_cors import CORS
 from api_routes import api
@@ -18,4 +19,5 @@ server.register_blueprint(api, url_prefix="/api")
 dash_app = init_dashboard(server)
 
 if __name__ == "__main__":
-    server.run(debug=True, host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    server.run(debug=True, host="0.0.0.0", port=port)

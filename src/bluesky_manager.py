@@ -50,11 +50,10 @@ class BlueSkyManager:
         self.access_token = session["accessJwt"]
         logging.info("Logged in successfully. Access JWT obtained.")
 
-    def get_posts(self, query: str, pages: int = 5) -> str:
+    def get_posts(self, query: str) -> str:
         """
         Retrieves posts from the BlueSky feed based on a query.
-        Only posts from the current day are kept. As soon as a post from a previous day
-        is encountered in a page, the fetching stops.
+        Only posts from the current day are kept. Fetches pages until an older post is encountered.
         If an existing file is found, it is used instead of fetching new data.
         Handles token expiration by retrying once after re-login.
         """
@@ -78,21 +77,19 @@ class BlueSkyManager:
         # Determine the current date (in UTC)
         current_date = datetime.now(timezone.utc).date()
         logging.info(
-            f"Fetching posts for query '{query}' (only for {current_date}) with {pages} pages."
+            f"Fetching posts for query '{query}' (only for {current_date}) until older posts are found."
         )
 
-        stop_fetching = False
-        for page in range(pages):
-            if stop_fetching:
-                break
-
+        page = 0
+        while True:
+            page += 1
             params = {"q": query, "limit": 100, "lang": "en"}
             if cursor:
                 params["cursor"] = cursor
 
             response = requests.get(url, params=params, headers=headers)
             logging.info(
-                f"Page {page+1}: Received response with status {response.status_code}"
+                f"Page {page}: Received response with status {response.status_code}"
             )
 
             # If token expired, re-login once
@@ -112,12 +109,9 @@ class BlueSkyManager:
             json_data = response.json()
             filtered_response = self.filter_and_translate_posts(json_data)
             posts = filtered_response.get("posts", [])
-            logging.info(
-                f"Page {page+1}: Retrieved {len(posts)} posts after filtering."
-            )
+            logging.info(f"Page {page}: Retrieved {len(posts)} posts after filtering.")
 
             current_day_posts = []
-            # Process each post, and stop fetching further if a post is older than today.
             for post in posts:
                 created_str = post.get("createdAt", "")
                 if created_str.endswith("Z"):
@@ -127,27 +121,22 @@ class BlueSkyManager:
                 else:
                     created_dt = datetime.fromisoformat(created_str)
 
-                # If the post was created today, keep it; otherwise, flag to stop further fetching.
                 if created_dt.date() == current_date:
                     current_day_posts.append(post)
                 else:
+                    logging.info(
+                        f"Page {page}: Found post from {created_dt.date()}, stopping fetch."
+                    )
                     stop_fetching = True
                     break
 
-            logging.info(
-                f"Page {page+1}: Added {len(current_day_posts)} posts from current day."
-            )
             all_filtered_posts.extend(current_day_posts)
-
-            if stop_fetching:
-                logging.info(
-                    "Encountered posts from a previous day. Stopping further fetching."
-                )
+            if "stop_fetching" in locals() and stop_fetching:
                 break
 
             cursor = json_data.get("cursor")
             if not cursor:
-                logging.info("No further pages available (cursor is None).")
+                logging.info(f"No more pages after page {page}.")
                 break
 
         final_json_response = {"posts": all_filtered_posts}

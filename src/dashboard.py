@@ -176,12 +176,17 @@ def update_graphs(n_clicks, query):
     )
 
     word_freq = analysis_response["word_frequency"]
-    wordcloud = WordCloud(
-        width=900, height=400, background_color="black"
-    ).generate_from_frequencies(word_freq)
-    img = BytesIO()
-    wordcloud.to_image().save(img, format="PNG")
-    wordcloud_src = "data:image/png;base64," + base64.b64encode(img.getvalue()).decode()
+    if word_freq:
+        wordcloud = WordCloud(
+            width=900, height=400, background_color="black"
+        ).generate_from_frequencies(word_freq)
+        img = BytesIO()
+        wordcloud.to_image().save(img, format="PNG")
+        wordcloud_src = (
+            "data:image/png;base64," + base64.b64encode(img.getvalue()).decode()
+        )
+    else:
+        wordcloud_src = ""
 
     heatmap_df = pd.DataFrame(analysis_response["heatmap_data"]).T.fillna(0)
     ordered_days = [

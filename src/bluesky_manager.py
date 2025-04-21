@@ -2,153 +2,166 @@ import os
 import requests
 import asyncio
 import logging
+from datetime import datetime, timezone, date
+from dateutil.parser import isoparse
 from utils.translate_posts import PostTranslator
 from utils.json_manager import JsonFileManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
-
-for noisy_lib in ["httpx", "httpcore", "urllib3", "googletrans", "asyncio"]:
-    logging.getLogger(noisy_lib).setLevel(logging.WARNING)
+for noisy in ["httpx", "httpcore", "urllib3", "googletrans", "asyncio"]:
+    logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 class BlueSkyManager:
     def __init__(self, data_folder: str = None):
-        """
-        Initializes the BlueSkyManager with an optional data folder for JSON storage.
-        Also creates an instance of JsonFileManager.
-        """
+        self.translator = PostTranslator()
         self.client = None
-        self.json_manager = JsonFileManager(data_folder)
         self.access_token = None
         logging.info("BlueSkyManager initialized.")
 
     def login(self):
-        """
-        Logs into the BlueSky account only if an access token does not already exist.
-        """
         if self.access_token:
-            logging.info("Access token already exists. Skipping login.")
+            logging.info("Access token exists, skipping login.")
             return
-
         username = os.getenv("BLUESKY_USERNAME")
         password = os.getenv("BLUESKY_PASSWORD")
-
         if not username or not password:
-            error_msg = "Missing BlueSky credentials in environment variables."
-            logging.error(error_msg)
-            raise ValueError(error_msg)
-
+            raise ValueError("Missing BlueSky credentials.")
         url = "https://bsky.social/xrpc/com.atproto.server.createSession"
-        logging.info("Attempting to log in to BlueSky.")
-        response = requests.post(
-            url, json={"identifier": username, "password": password}
-        )
-        response.raise_for_status()
-        session = response.json()
-        self.access_token = session["accessJwt"]
-        logging.info(f"Logged in successfully. Access JWT obtained.")
+        resp = requests.post(url, json={"identifier": username, "password": password})
+        resp.raise_for_status()
+        self.access_token = resp.json()["accessJwt"]
+        logging.info("Logged in to BlueSky.")
 
-    def get_posts(self, query: str, pages: int = 5) -> str:
+    def get_posts(
+        self, query: str, target_date: date = None, max_pages: int = 10
+    ) -> dict:
         """
-        Retrieves posts from the BlueSky feed based on a query.
-        If an existing file is found, it is used instead of fetching new data.
-        Handles token expiration by retrying once after re-login.
+        Fetch posts matching `query` until we see a post older than `target_date`,
+        then stop. Only returns posts created exactly on `target_date`.
         """
-        existing_file_path = self.json_manager.get_existing_file_path(query)
-        if existing_file_path:
-            logging.info(f"Using existing data file: {existing_file_path}")
-            return existing_file_path
+        if target_date is None:
+            # default to “today” in UTC
+            target_date = datetime.now(timezone.utc).date()
 
-        url = "https://api.bsky.app/xrpc/app.bsky.feed.searchPosts"
         headers = {}
         if self.access_token:
             headers["Authorization"] = f"Bearer {self.access_token}"
 
-        all_filtered_posts = []
+        all_posts = []
         cursor = None
-        retry_attempted = False
+        retry = False
 
-        logging.info(f"Fetching posts for query: '{query}' with {pages} pages.")
-        for page in range(pages):
+        for _ in range(max_pages):
             params = {"q": query, "limit": 100, "lang": "en"}
             if cursor:
                 params["cursor"] = cursor
 
-            response = requests.get(url, params=params, headers=headers)
-            logging.info(
-                f"Page {page+1}: Received response with status {response.status_code}"
+            resp = requests.get(
+                "https://api.bsky.app/xrpc/app.bsky.feed.searchPosts",
+                params=params,
+                headers=headers,
             )
-
-            if response.status_code == 403 and not retry_attempted:
-                logging.warning("Access token expired. Re-authenticating...")
+            # handle expired token once
+            if resp.status_code == 403 and not retry:
+                logging.warning("Token expired, re-authenticating…")
                 self.login()
                 headers["Authorization"] = f"Bearer {self.access_token}"
-                retry_attempted = True
+                retry = True
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+
+            # examine each post’s createdAt
+            page_posts = data.get("posts", [])
+            to_keep = []
+            for p in page_posts:
+                created = p["record"].get("createdAt")
+                if not created:
+                    continue
+                created_dt = isoparse(created)
+                created_d = created_dt.date()
+                # if we’ve gone past the target day, stop everything
+                if created_d < target_date:
+                    logging.info(
+                        f"Encountered post on {created_d}, which is before {target_date}; stopping."
+                    )
+                    page_posts = None
+                    break
+                # only keep if exactly on the target date
+                if created_d == target_date:
+                    to_keep.append(p)
+            if page_posts is None:
+                break
+
+            if not to_keep:
+                # no posts on target date in this page, but still more pages might have them
+                cursor = data.get("cursor")
+                if not cursor:
+                    break
                 continue
 
-            if response.status_code != 200:
-                logging.error(
-                    f"Error fetching posts: {response.status_code} - {response.text}"
+            # collect posts without translation
+            for p in to_keep:
+                rec = p["record"]
+                all_posts.append(
+                    {
+                        "text": rec.get("cleaned_text") or rec.get("text", ""),
+                        "createdAt": rec.get("createdAt", ""),
+                        "author": p["author"].get("handle", ""),
+                        "language": "en",
+                    }
                 )
-                break
 
-            json_data = response.json()
-            filtered_response = self.filter_and_translate_posts(json_data)
-            posts = filtered_response.get("posts", [])
-            logging.info(
-                f"Page {page+1}: Retrieved {len(posts)} posts after filtering."
-            )
-
-            if not posts:
-                logging.info("No more posts available.")
-                break
-
-            all_filtered_posts.extend(posts)
-            cursor = json_data.get("cursor")
+            cursor = data.get("cursor")
             if not cursor:
-                logging.info("No further pages available (cursor is None).")
                 break
 
-        final_json_response = {"posts": all_filtered_posts}
-        filename = self.json_manager.generate_filename(query)
-        file_path = self.json_manager.store_json(final_json_response, filename)
-        logging.info(f"Stored posts to file: {file_path}")
-        return file_path
+        return {"posts": all_posts}
 
-    def filter_and_translate_posts(self, data: dict) -> dict:
+    def _translate_posts(self, posts: list) -> list:
         """
-        Filters and translates posts.
+        Given a list of raw post dicts, run translation asynchronously using
+        the already-initialized PostTranslator and return filtered dicts
+        with only the relevant fields.
         """
-        translator = PostTranslator()
-        posts = data.get("posts", [])
-        filtered_posts = []
-        tasks = []
+        # Create translation tasks
+        tasks = [
+            self.translator.translate_text(
+                p["record"].get("cleaned_text") or p["record"].get("text", "")
+            )
+            for p in posts
+        ]
 
-        logging.info(f"Translating {len(posts)} posts.")
-        for post in posts:
-            record = post.get("record", {})
-            text = record.get("cleaned_text", record.get("text", ""))
-            tasks.append(translator.translate_text(text))
-
-        async def run_translations():
-            return await asyncio.gather(*tasks)
+        async def runner():
+            return await asyncio.gather(*tasks, return_exceptions=True)
 
         try:
-            translations = asyncio.run(run_translations())
+            results = asyncio.run(runner())
         except Exception as e:
-            logging.error(f"Error during translations: {e}")
-            translations = [""] * len(tasks)
+            logging.error("Translation error during batch run: %s", e)
+            results = [{"text": "", "language": ""}] * len(posts)
 
-        for post, translation_result in zip(posts, translations):
-            record = post.get("record", {})
-            author = post.get("author", {})
-            filtered_post = {
-                "text": translation_result.get("text", ""),
-                "createdAt": record.get("createdAt", ""),
-                "author": author.get("handle", ""),
-                "language": translation_result.get("language", ""),
-            }
-            filtered_posts.append(filtered_post)
+        out = []
+        for p, tr in zip(posts, results):
+            rec = p["record"]
+            author = p["author"].get("handle", "")
 
-        logging.info("Filtering and translation complete.")
-        return {"posts": filtered_posts}
+            # Handle translation exceptions individually
+            if isinstance(tr, Exception):
+                logging.error("Translation failed for post: %s", tr)
+                translated_text = ""
+                language = "error"
+            else:
+                translated_text = tr.get("text", "")
+                language = tr.get("language", "")
+
+            out.append(
+                {
+                    "text": translated_text,
+                    "createdAt": rec.get("createdAt", ""),
+                    "author": author,
+                    "language": language,
+                }
+            )
+        return out

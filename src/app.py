@@ -1,7 +1,5 @@
 from flask import Flask, jsonify, request
-import json
 import logging
-import pandas as pd
 from bluesky_manager import BlueSkyManager
 from utils.text_cleaner import TextCleaner
 from sentiment_analyzer import SentimentAnalyzer
@@ -22,11 +20,9 @@ def fetch_posts():
     try:
         bs_manager.login()
 
-        file_path = bs_manager.get_posts(query, pages=50)
-
-        with open(file_path, "r") as infile:
-            data = json.load(infile)
-        logging.info("JSON data loaded from file.")
+        # Now get_posts returns a dict directly
+        data = bs_manager.get_posts(query, max_pages=20)
+        logging.info("Data retrieved from BlueSkyManager.")
 
         posts = data.get("posts", [])
         if not posts:
@@ -37,7 +33,7 @@ def fetch_posts():
         analyzer = SentimentAnalyzer()
 
         logging.info("Cleaning post texts.")
-        cleaned_texts = [cleaner.clean_text(post["text"]) for post in posts]
+        cleaned_texts = [cleaner.clean_text(post.get("text", "")) for post in posts]
         logging.info(f"Cleaned {len(cleaned_texts)} texts.")
 
         logging.info("Performing sentiment analysis.")
@@ -45,8 +41,8 @@ def fetch_posts():
         logging.info("Sentiment analysis completed.")
 
         for post, sentiment, clean in zip(posts, sentiment_results, cleaned_texts):
-            post["sentiment"] = sentiment["label"]
-            post["confidence"] = sentiment["score"]
+            post["sentiment"] = sentiment.get("label")
+            post["confidence"] = sentiment.get("score")
             post["cleaned_text"] = clean
 
         logging.info("Post processing complete, returning posts data.")

@@ -9,7 +9,7 @@ class Post(Base):
     __tablename__ = "posts"
 
     id = Column(Integer, primary_key=True)
-    cid = Column(String, nullable=False, unique=True)
+    uri = Column(String, nullable=False, unique=True)
     text = Column(String)
     sentiment = Column(String)
     confidence = Column(Float)

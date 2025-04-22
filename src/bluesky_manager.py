@@ -94,7 +94,7 @@ class BlueSkyManager:
 
                 all_posts.append(
                     {
-                        "cid": item.get("cid"),
+                        "uri": item.get("uri"),
                         "text": text,
                         "createdAt": created_at_str,
                     }
@@ -239,7 +239,6 @@ class BlueSkyManager:
 
                 all_posts.append(
                     {
-                        "cid": p.get("cid"),
                         "uri": p.get("uri"),
                         "text": post_text,
                         "createdAt": created_at_str

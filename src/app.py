@@ -18,7 +18,7 @@ app = Flask(__name__)
 
 @app.route("/fetch_posts", methods=["GET"])
 def fetch_posts():
-    """Fetch posts from BlueSky, analyze sentiment, and store unique posts by CID."""
+    """Fetch posts from BlueSky, analyze sentiment, and store unique posts by uri."""
     query = request.args.get("query", "Macron")
     logging.info(f"Received fetch_posts request with query: {query}")
     bs_manager = BlueSkyManager()
@@ -26,7 +26,6 @@ def fetch_posts():
     try:
         bs_manager.login()
         data = bs_manager.get_posts(query)
-        # data = bs_manager.get_posts_no_date_filter(query, max_pages=100)
         logging.info("Data retrieved from BlueSkyManager.")
 
         posts = data.get("posts", [])
@@ -50,7 +49,7 @@ def fetch_posts():
         session = Session()
 
         for post, sentiment, clean in zip(posts, sentiment_results, cleaned_texts):
-            cid = post.get("cid")
+            uri = post.get("uri")
             post["sentiment"] = sentiment.get("label")
             post["confidence"] = sentiment.get("score")
             post["cleaned_text"] = clean
@@ -69,7 +68,7 @@ def fetch_posts():
 
             # create DB object
             db_post = Post(
-                cid=cid,
+                uri=uri,
                 text=clean,
                 sentiment=post["sentiment"],
                 confidence=post["confidence"],
@@ -79,10 +78,9 @@ def fetch_posts():
             session.add(db_post)
             try:
                 session.commit()
-                logging.debug(f"Inserted post cid={cid}")
+                logging.debug(f"Inserted post uri={uri}")
             except IntegrityError:
                 session.rollback()
-                # logging.info(f"Skipped duplicate post cid={cid}")
 
         session.close()
 
@@ -109,7 +107,7 @@ def analyze_data():
 
         posts = [
             {
-                "cid": post.cid,
+                "uri": post.uri,
                 "text": post.text,
                 "sentiment": post.sentiment,
                 "confidence": post.confidence,

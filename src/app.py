@@ -1,9 +1,15 @@
+import datetime
+from datetime import timezone
 from flask import Flask, jsonify, request
 import logging
+from sqlalchemy.exc import IntegrityError
+
 from bluesky_manager import BlueSkyManager
 from utils.text_cleaner import TextCleaner
 from sentiment_analyzer import SentimentAnalyzer
 from data_processor import DataProcessor
+from db import Session
+from models import Post
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
@@ -12,22 +18,22 @@ app = Flask(__name__)
 
 @app.route("/fetch_posts", methods=["GET"])
 def fetch_posts():
-    """Fetch posts from BlueSky and analyze sentiment"""
-    query = request.args.get("query", "Macron")  # Default query is "Macron"
+    """Fetch posts from BlueSky, analyze sentiment, and store unique posts by uri."""
+    query = request.args.get("query", "Macron")
     logging.info(f"Received fetch_posts request with query: {query}")
     bs_manager = BlueSkyManager()
 
     try:
         bs_manager.login()
-
-        # Now get_posts returns a dict directly
-        data = bs_manager.get_posts(query, max_pages=20)
+        data = bs_manager.get_posts(query)
         logging.info("Data retrieved from BlueSkyManager.")
 
         posts = data.get("posts", [])
         if not posts:
-            logging.warning("No posts found in the fetched data.")
-            return jsonify({"message": "No posts found"}), 404
+            logging.warning(
+                "No posts found in the fetched data; skipping sentiment/DB."
+            )
+            return "", 204
 
         cleaner = TextCleaner()
         analyzer = SentimentAnalyzer()
@@ -40,12 +46,45 @@ def fetch_posts():
         sentiment_results = analyzer.analyze_texts(cleaned_texts)
         logging.info("Sentiment analysis completed.")
 
+        session = Session()
+
         for post, sentiment, clean in zip(posts, sentiment_results, cleaned_texts):
+            uri = post.get("uri")
             post["sentiment"] = sentiment.get("label")
             post["confidence"] = sentiment.get("score")
             post["cleaned_text"] = clean
 
-        logging.info("Post processing complete, returning posts data.")
+            # parse createdAt
+            created_at = None
+            created_at_str = post.get("createdAt")
+
+            if created_at_str:
+                try:
+                    created_at = datetime.datetime.fromisoformat(
+                        created_at_str.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    logging.warning(f"Invalid createdAt format: {created_at_str}")
+
+            # create DB object
+            db_post = Post(
+                uri=uri,
+                text=clean,
+                sentiment=post["sentiment"],
+                confidence=post["confidence"],
+                created_at=created_at,
+            )
+
+            session.add(db_post)
+            try:
+                session.commit()
+                logging.debug(f"Inserted post uri={uri}")
+            except IntegrityError:
+                session.rollback()
+
+        session.close()
+
+        logging.info("Post processing and saving to DB complete.")
         return jsonify(posts)
 
     except Exception as e:
@@ -55,14 +94,28 @@ def fetch_posts():
 
 @app.route("/analyze_data", methods=["POST"])
 def analyze_data():
-    posts = request.json.get("posts", [])
-    logging.info(f"Received analyze_data request with {len(posts)} posts.")
-
-    if not posts:
-        logging.warning("No posts provided in the request.")
-        return jsonify({"error": "No posts provided"}), 400
+    """Fetch all stored posts and run DataProcessor on them."""
+    session = Session()
 
     try:
+        logging.info("Fetching all posts from database for analysis.")
+        db_posts = session.query(Post).all()
+
+        if not db_posts:
+            logging.warning("No posts found in the database.")
+            return jsonify({"error": "No posts found in database"}), 404
+
+        posts = [
+            {
+                "uri": post.uri,
+                "text": post.text,
+                "sentiment": post.sentiment,
+                "confidence": post.confidence,
+                "createdAt": post.created_at.isoformat() if post.created_at else None,
+            }
+            for post in db_posts
+        ]
+
         processor = DataProcessor(posts)
         logging.info("Processing data using DataProcessor.")
 
@@ -78,11 +131,16 @@ def analyze_data():
             "heatmap_data": processor.get_heatmap_data(),
             "top_words_by_sentiment": processor.get_top_words_by_sentiment(),
         }
+
         logging.info("Data analysis complete, returning results.")
         return jsonify(result)
+
     except Exception as e:
         logging.exception("Error in analyze_data endpoint:")
         return jsonify({"error": str(e)}), 500
+
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":

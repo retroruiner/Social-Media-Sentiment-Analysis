@@ -91,12 +91,9 @@ class DataProcessor:
                 continue
 
             try:
-                # First, normalize the format by replacing 'Z' with '+00:00'
-                if created_at.endswith("Z"):
-                    created_at = created_at[:-1] + "+00:00"
-
-                dt_obj = pd.to_datetime(created_at.strip(), format="ISO8601", utc=True)
-
+                # Let pandas infer the format; strip trailing Z if present
+                ts = created_at.rstrip("Z")
+                dt_obj = pd.to_datetime(ts, utc=True, errors="coerce")
                 sentiment = post.get("sentiment", "UNKNOWN")
                 data.append({"datetime": dt_obj, "sentiment": sentiment})
             except Exception as e:
@@ -309,11 +306,9 @@ class DataProcessor:
             logging.warning("createdAt column not found in posts data.")
             return {}
 
+        # let pandas infer the format, coerce errors to NaT
         posts_df["createdAt"] = pd.to_datetime(
-            posts_df["createdAt"].str.replace("Z", "+00:00"),
-            format="%Y-%m-%dT%H:%M:%S.%f%z",
-            errors="coerce",
-            utc=True,
+            posts_df["createdAt"].str.rstrip("Z"), utc=True, errors="coerce"
         )
         posts_df["day_of_week"] = posts_df["createdAt"].dt.day_name()
         posts_df["hour"] = posts_df["createdAt"].dt.hour

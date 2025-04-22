@@ -147,33 +147,67 @@ def update_graphs(n_clicks, query):
         color_discrete_map={"POSITIVE": "green", "NEGATIVE": "red"},
     )
 
+    # Build the DataFrame
     sentiment_time_df = pd.DataFrame(analysis_response["sentiment_over_time"])
+
+    # Decide whether we’re plotting by date or by hour
     x_col = "date" if "date" in sentiment_time_df else "hour"
+
     if x_col == "hour":
-        sentiment_time_df["hour"] = sentiment_time_df["hour"].apply(
-            lambda h: f"{int(h):02d}:00"
+        # Keep hour as an integer so Plotly treats it as a numeric axis
+        sentiment_time_df["hour"] = sentiment_time_df["hour"].astype(int)
+
+        # Compute the sorted list of hours we actually have data for
+        hours = sorted(sentiment_time_df["hour"].unique())
+
+        # Create the line chart with a linear x‑axis
+        sentiment_time_fig = px.line(
+            sentiment_time_df,
+            x="hour",
+            y="count",
+            color="sentiment",
+            title="Sentiment Over Time",
+            color_discrete_map={"POSITIVE": "green", "NEGATIVE": "red"},
+            markers=True,
         )
+
+        # Format the x‑axis ticks as "HH:00" and ensure correct chronological order
+        sentiment_time_fig.update_layout(
+            xaxis=dict(
+                tickmode="array",
+                tickvals=hours,
+                ticktext=[f"{h:02d}:00" for h in hours],
+                tickangle=-45,
+                tickfont=dict(size=10),
+            ),
+            margin=dict(t=40, b=80),
+            legend_title=None,
+        )
+
     else:
+        # Parse dates and format as YYYY‑MM‑DD
         sentiment_time_df["date"] = pd.to_datetime(
             sentiment_time_df["date"], errors="coerce"
         )
         sentiment_time_df["date"] = sentiment_time_df["date"].dt.strftime("%Y-%m-%d")
 
-    sentiment_time_fig = px.line(
-        sentiment_time_df,
-        x=x_col,
-        y="count",
-        color="sentiment",
-        title="Sentiment Over Time",
-        color_discrete_map={"POSITIVE": "green", "NEGATIVE": "red"},
-        markers=True,
-    )
-    sentiment_time_fig.update_layout(
-        xaxis_tickangle=-45,
-        xaxis_tickfont=dict(size=10),
-        margin=dict(t=40, b=80),
-        legend_title=None,
-    )
+        # Create the line chart on a categorical date axis
+        sentiment_time_fig = px.line(
+            sentiment_time_df,
+            x="date",
+            y="count",
+            color="sentiment",
+            title="Sentiment Over Time",
+            color_discrete_map={"POSITIVE": "green", "NEGATIVE": "red"},
+            markers=True,
+        )
+
+        sentiment_time_fig.update_layout(
+            xaxis_tickangle=-45,
+            xaxis_tickfont=dict(size=10),
+            margin=dict(t=40, b=80),
+            legend_title=None,
+        )
 
     word_freq = analysis_response["word_frequency"]
     if word_freq:

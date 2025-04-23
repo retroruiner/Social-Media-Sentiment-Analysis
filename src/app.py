@@ -13,7 +13,7 @@ from io import BytesIO
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from src.models import Post, Base  # your SQLAlchemy models + metadata
-from data_processor import DataProcessor
+from src.data_processor import DataProcessor
 
 # ─── DATABASE SETUP ─────────────────────────────────────────────────────────
 DATABASE_URL = os.environ["DATABASE_URL"]

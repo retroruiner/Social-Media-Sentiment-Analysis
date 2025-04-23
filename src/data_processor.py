@@ -13,7 +13,7 @@ def ensure_nltk_resources():
       - stopwords corpus
     """
     resources = {
-        "punkt": "tokenizers/punkt",
+        "punkt_tab": "tokenizers/punkt_tab",
         "wordnet": "corpora/wordnet",
         "omw-1.4": "corpora/omw-1.4",
         "stopwords": "corpora/stopwords",

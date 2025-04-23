@@ -1,3 +1,5 @@
+from nltk.data import find
+import nltk
 import pandas as pd
 from collections import Counter
 import datetime
@@ -6,6 +8,11 @@ from nltk.stem import WordNetLemmatizer
 import string
 import logging
 from nltk.corpus import stopwords
+
+try:
+    find("corpora/stopwords")
+except LookupError:
+    nltk.download("stopwords", quiet=True)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 

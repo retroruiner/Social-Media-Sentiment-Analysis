@@ -5,7 +5,7 @@ import logging
 from sqlalchemy.exc import IntegrityError
 
 from bluesky_manager import BlueSkyManager
-from utils.text_cleaner import TextCleaner
+from src.utils.text_cleaner import TextCleaner
 from sentiment_analyzer import SentimentAnalyzer
 from data_processor import DataProcessor
 from db import Session

@@ -23,5 +23,5 @@ jobs:
         run: python fetch_and_store.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          BS_USERNAME:  ${{ secrets.BS_USERNAME }}
-          BS_PASSWORD:  ${{ secrets.BS_PASSWORD }}
+          BS_USERNAME:  ${{ secrets.BLUESKY_USERNAME }}
+          BS_PASSWORD:  ${{ secrets.BLUESKY_PASSWORD }}

@@ -1,11 +1,42 @@
+import logging
+import nltk
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+
+
+def ensure_nltk_resources():
+    """
+    Check for and download required NLTK data:
+      - punkt tokenizer
+      - WordNet corpus
+      - Omw multilingual WordNet data
+      - stopwords corpus
+    """
+    resources = {
+        "punkt": "tokenizers/punkt",
+        "wordnet": "corpora/wordnet",
+        "omw-1.4": "corpora/omw-1.4",
+        "stopwords": "corpora/stopwords",
+    }
+    for pkg, path in resources.items():
+        try:
+            nltk.data.find(path)
+            logging.info(f"NLTK resource '{pkg}' is already installed.")
+        except LookupError:
+            logging.info(f"NLTK resource '{pkg}' not found — downloading…")
+            nltk.download(pkg)
+
+
+ensure_nltk_resources()
+
 import pandas as pd
 from collections import Counter
 import datetime
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 import string
-import logging
 from nltk.corpus import stopwords
+import logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 

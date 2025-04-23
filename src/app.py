@@ -15,6 +15,13 @@ from sqlalchemy.orm import sessionmaker
 from src.models import Post, Base  # your SQLAlchemy models + metadata
 from src.data_processor import DataProcessor
 
+# ─── CACHE SETUP ────────────────────────────────────────────────────────────
+# Simple in-memory cache for last data signature and outputs
+data_cache = {
+    "signature": None,
+    "outputs": None,
+}
+
 # ─── DATABASE SETUP ─────────────────────────────────────────────────────────
 DATABASE_URL = os.environ["DATABASE_URL"]
 engine = create_engine(DATABASE_URL, echo=False, future=True)
@@ -34,13 +41,11 @@ app = dash.Dash(
 # ─── LAYOUT ─────────────────────────────────────────────────────────────────
 app.layout = dbc.Container(
     [
-        # Hidden interval component triggers update every hour
         dcc.Interval(id="interval-component", interval=3600000, n_intervals=0),  # 1h
         html.H1(
             "Social Media Sentiment Dashboard",
             className="text-center text-primary my-4 fw-bold",
         ),
-        # Search input (fires callback on change)
         dbc.Row(
             dbc.Col(
                 dcc.Input(
@@ -53,7 +58,6 @@ app.layout = dbc.Container(
             ),
             className="mb-4",
         ),
-        # Charts
         dbc.Row(
             [
                 dbc.Col(
@@ -118,7 +122,7 @@ app.layout = dbc.Container(
 )
 
 
-# ─── CALLBACK ───────────────────────────────────────────────────────────────
+# ─── CALLBACK WITH CACHING ───────────────────────────────────────────────────
 @app.callback(
     [
         dash.Output("sentiment-distribution", "figure"),
@@ -145,7 +149,16 @@ def update_graphs(n_intervals, query):
     if not db_posts:
         return (dash.no_update,) * 6
 
-    # Prepare data
+    # Compute a simple data signature: count + latest timestamp
+    timestamps = [p.created_at for p in db_posts if p.created_at]
+    latest = max(timestamps) if timestamps else None
+    signature = (len(db_posts), latest, query)
+
+    # If signature matches cache, return cached outputs
+    if signature == data_cache["signature"]:
+        return data_cache["outputs"]
+
+    # Otherwise, process data
     posts = [
         {
             "uri": p.uri,
@@ -220,7 +233,7 @@ def update_graphs(n_intervals, query):
     freqs = proc.get_word_frequency()
     if freqs:
         wc = WordCloud(
-            width=900, height=400, background_color="black"
+            width=600, height=300, background_color="black", max_words=100
         ).generate_from_frequencies(freqs)
         img = BytesIO()
         wc.to_image().save(img, format="PNG")
@@ -271,7 +284,9 @@ def update_graphs(n_intervals, query):
         color_discrete_sequence=["red"],
     )
 
-    return (
+    # Cache outputs and signature
+    data_cache["signature"] = signature
+    data_cache["outputs"] = (
         sentiment_fig,
         sentiment_time_fig,
         wordcloud_src,
@@ -280,11 +295,10 @@ def update_graphs(n_intervals, query):
         neg_words_fig,
     )
 
+    return data_cache["outputs"]
+
 
 # ─── RUN ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 8050)),
-    )
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8050)))

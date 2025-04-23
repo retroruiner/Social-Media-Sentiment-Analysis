@@ -12,7 +12,7 @@ from io import BytesIO
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from models import Post, Base  # your SQLAlchemy models + metadata
+from src.models import Post, Base  # your SQLAlchemy models + metadata
 from data_processor import DataProcessor
 
 # ─── DATABASE SETUP ─────────────────────────────────────────────────────────

@@ -9,9 +9,11 @@ import string
 import logging
 from nltk.corpus import stopwords
 
-for resource in ["stopwords", "punkt"]:
+for resource in ["stopwords", "punkt", "punkt_tab"]:
     try:
-        find(f"tokenizers/{resource}" if resource == "punkt" else f"corpora/{resource}")
+        # punkt & punkt_tab live under tokenizers/, stopwords under corpora/
+        kind = "tokenizers" if resource in ("punkt", "punkt_tab") else "corpora"
+        find(f"{kind}/{resource}")
     except LookupError:
         nltk.download(resource, quiet=True)
 

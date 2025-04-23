@@ -9,10 +9,11 @@ import string
 import logging
 from nltk.corpus import stopwords
 
-try:
-    find("corpora/stopwords")
-except LookupError:
-    nltk.download("stopwords", quiet=True)
+for resource in ["stopwords", "punkt"]:
+    try:
+        find(f"tokenizers/{resource}" if resource == "punkt" else f"corpora/{resource}")
+    except LookupError:
+        nltk.download(resource, quiet=True)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 

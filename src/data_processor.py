@@ -1,5 +1,3 @@
-from nltk.data import find
-import nltk
 import pandas as pd
 from collections import Counter
 import datetime
@@ -8,14 +6,6 @@ from nltk.stem import WordNetLemmatizer
 import string
 import logging
 from nltk.corpus import stopwords
-
-for resource in ["stopwords", "punkt", "punkt_tab"]:
-    try:
-        # punkt & punkt_tab live under tokenizers/, stopwords under corpora/
-        kind = "tokenizers" if resource in ("punkt", "punkt_tab") else "corpora"
-        find(f"{kind}/{resource}")
-    except LookupError:
-        nltk.download(resource, quiet=True)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 

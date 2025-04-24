@@ -19,25 +19,19 @@ DEFAULT_QUERY = "Macron"
 
 def determine_query_and_cleanup(session):
     """
-    1) Fetch the two most recent rows with uri=="query".
-    2) If both exist and their .query differs -> truncate the table and return newest.
-    3) Otherwise (one or two matching) -> delete only the query rows and return the newest (or only).
-    4) If none exist -> return DEFAULT_QUERY.
+    1) Fetch the two most recent rows (by id DESC).
+    2) If both exist and their .query differs --> truncate the entire table and return latest.query.
+    3) Otherwise (one or both share the same .query) --> delete only the uri=='query' markers, return latest.query.
+    4) If none exist --> return DEFAULT_QUERY.
     """
-    # 1) get up to 2 latest "query" posts
-    query_rows = (
-        session.query(Post)
-        .filter(Post.uri == "query")
-        .order_by(Post.created_at.desc())
-        .limit(2)
-        .all()
-    )
+    # grab up to two newest rows by primary key
+    latest_rows = session.query(Post).order_by(Post.id.desc()).limit(2).all()
 
-    if len(query_rows) >= 2:
-        latest, previous = query_rows[0], query_rows[1]
+    if len(latest_rows) >= 2:
+        latest, previous = latest_rows[0], latest_rows[1]
         if latest.query != previous.query:
             logging.info(
-                f"Detected query change ('{previous.query}' → '{latest.query}'). "
+                f"Detected query change (previous='{previous.query}' → latest='{latest.query}'). "
                 "Truncating entire posts table."
             )
             session.query(Post).delete()
@@ -45,20 +39,24 @@ def determine_query_and_cleanup(session):
             return latest.query
 
         # they match
-        logging.info(f"Query '{latest.query}' unchanged. Removing old query markers.")
+        logging.info(
+            f"Query '{latest.query}' unchanged. Removing only query-marker rows."
+        )
         session.query(Post).filter(Post.uri == "query").delete()
         session.commit()
         return latest.query
 
-    elif len(query_rows) == 1:
-        only = query_rows[0]
-        logging.info(f"Single query marker found: '{only.query}'. Removing it.")
+    elif len(latest_rows) == 1:
+        only = latest_rows[0]
+        logging.info(
+            f"Only one row found (query='{only.query}'). Removing query-marker rows."
+        )
         session.query(Post).filter(Post.uri == "query").delete()
         session.commit()
         return only.query
 
     else:
-        logging.info(f"No query markers found; defaulting to '{DEFAULT_QUERY}'.")
+        logging.info(f"No rows in posts table; defaulting to '{DEFAULT_QUERY}'.")
         return DEFAULT_QUERY
 
 

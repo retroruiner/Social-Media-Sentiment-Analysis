@@ -14,3 +14,4 @@ class Post(Base):
     sentiment = Column(String)
     confidence = Column(Float)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    query = Column(String, nullable=True)

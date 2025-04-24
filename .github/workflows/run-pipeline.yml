@@ -1,7 +1,7 @@
 name: Run Sentiment Pipeline (Manual Trigger)
 
 on:
-  workflow_dispatch:   # Allows manual run from GitHub UI
+  workflow_dispatch:  
 
 jobs:
   fetch_and_analyze:

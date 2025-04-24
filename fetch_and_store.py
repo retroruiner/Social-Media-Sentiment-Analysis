@@ -1,13 +1,10 @@
-import os
 import logging
 import datetime
 from datetime import timezone
 
 from sqlalchemy.exc import IntegrityError
 from src.db import Session
-from src.models import (
-    Post,
-)
+from src.models import Post
 from src.bluesky_manager import BlueSkyManager
 from src.utils.text_cleaner import TextCleaner
 from src.sentiment_analyzer import SentimentAnalyzer
@@ -20,82 +17,61 @@ logging.basicConfig(
 DEFAULT_QUERY = "Macron"
 
 
-def get_latest_db_query(session):
-    """Return the most recent Post.query for rows with uri=='query'."""
-    row = (
-        session.query(Post.query, Post.created_at)
+def determine_query_and_cleanup(session):
+    """
+    1) Fetch the two most recent rows with uri=="query".
+    2) If both exist and their .query differs -> truncate the table and return newest.
+    3) Otherwise (one or two matching) -> delete only the query rows and return the newest (or only).
+    4) If none exist -> return DEFAULT_QUERY.
+    """
+    # 1) get up to 2 latest "query" posts
+    query_rows = (
+        session.query(Post)
         .filter(Post.uri == "query")
         .order_by(Post.created_at.desc())
-        .first()
+        .limit(2)
+        .all()
     )
-    return row.query if row else None
 
+    if len(query_rows) >= 2:
+        latest, previous = query_rows[0], query_rows[1]
+        if latest.query != previous.query:
+            logging.info(
+                f"Detected query change ('{previous.query}' → '{latest.query}'). "
+                "Truncating entire posts table."
+            )
+            session.query(Post).delete()
+            session.commit()
+            return latest.query
 
-def resolve_current_query(session):
-    """
-    Determine which query to use, in this order:
-      1) If CURRENT_QUERY env-var is unset, try the DB’s latest 'uri=="query"' row.
-      2) If still unset, fall back to DEFAULT_QUERY.
-      3) If env-var and DB disagree, purge table and adopt the DB value.
-    """
-    env_q = os.getenv("CURRENT_QUERY")
-    db_q = get_latest_db_query(session)
-
-    # 1) If no env var, but DB has a query → use it
-    if not env_q and db_q:
-        logging.info(f"No CURRENT_QUERY env-var; using DB value '{db_q}'.")
-        return db_q
-
-    # 2) If neither env nor DB → default
-    if not env_q and not db_q:
-        logging.info(
-            f"No CURRENT_QUERY or DB query found; defaulting to '{DEFAULT_QUERY}'."
-        )
-        return DEFAULT_QUERY
-
-    # 3) Env exists, DB missing → keep env
-    if env_q and not db_q:
-        logging.info(f"CURRENT_QUERY env-var '{env_q}' set; no DB override found.")
-        return env_q
-
-    # 4) Both exist but differ → DB wins, and clear out everything
-    if env_q != db_q:
-        logging.info(
-            f"Env-var '{env_q}' ≠ DB '{db_q}'; truncating table and using DB value."
-        )
-        session.query(Post).delete()
+        # they match
+        logging.info(f"Query '{latest.query}' unchanged. Removing old query markers.")
+        session.query(Post).filter(Post.uri == "query").delete()
         session.commit()
-        return db_q
+        return latest.query
 
-    # 5) Both exist and match → just use it
-    logging.info(f"Using CURRENT_QUERY='{env_q}' (matches DB).")
-    return env_q
+    elif len(query_rows) == 1:
+        only = query_rows[0]
+        logging.info(f"Single query marker found: '{only.query}'. Removing it.")
+        session.query(Post).filter(Post.uri == "query").delete()
+        session.commit()
+        return only.query
 
-
-def export_to_github_env(var_name: str, value: str):
-    """
-    If running under GitHub Actions, append VAR=VALUE to the $GITHUB_ENV
-    so downstream steps see it.
-    """
-    gh_env = os.getenv("GITHUB_ENV")
-    if gh_env:
-        with open(gh_env, "a") as fh:
-            fh.write(f"{var_name}={value}\n")
-        logging.info(f"Exported {var_name}='{value}' to $GITHUB_ENV")
+    else:
+        logging.info(f"No query markers found; defaulting to '{DEFAULT_QUERY}'.")
+        return DEFAULT_QUERY
 
 
 def main():
     session = Session()
 
-    # Figure out which query we should be using this run
-    current_query = resolve_current_query(session)
+    # Decide which query to use and clean up markers/tables accordingly
+    current_query = determine_query_and_cleanup(session)
+    logging.info(f"▶ Using query: {current_query!r}")
 
-    # Make sure subsequent steps in GH Actions see the final query
-    export_to_github_env("CURRENT_QUERY", current_query)
-
-    # Fetch existing URIs (will be empty if we just truncated)
+    # Now gather existing URIs (after any truncation above)
     existing_uris = {uri for (uri,) in session.query(Post.uri).all()}
-    logging.info(f"{len(existing_uris)} existing URIs in DB")
+    logging.info(f"Found {len(existing_uris)} existing URIs in DB.")
 
     # Fetch from BlueSky
     bs = BlueSkyManager()
@@ -105,7 +81,7 @@ def main():
     logging.info(f"Fetched {len(posts)} posts for query={current_query!r}")
 
     if not posts:
-        logging.info("No posts returned; exiting.")
+        logging.info("No posts to process; exiting.")
         session.close()
         return
 
@@ -118,10 +94,10 @@ def main():
         if not uri or uri in existing_uris:
             continue
 
-        text = cleaner.clean_text(p.get("text", ""))
-        result = analyzer.analyze_texts([text])
+        clean_text = cleaner.clean_text(p.get("text", ""))
+        result = analyzer.analyze_texts([clean_text])
         if not result:
-            logging.warning(f"Skipping {uri!r}; no sentiment result.")
+            logging.warning(f"Skipping {uri!r}; sentiment analysis returned nothing.")
             continue
 
         label = result[0].get("label")
@@ -136,9 +112,10 @@ def main():
             except ValueError:
                 logging.warning(f"Bad timestamp {ts_str!r} for {uri!r}")
 
+        # Insert, tagging it with current_query
         db_post = Post(
             uri=uri,
-            text=text,
+            text=clean_text,
             sentiment=label,
             confidence=score,
             created_at=created_at,

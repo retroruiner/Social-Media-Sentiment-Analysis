@@ -100,12 +100,11 @@ def main():
         return
 
     uris, texts, timestamps = zip(*to_process)
-    logging.info(f"Analyzing sentiment for {len(texts)} texts.")
     results = analyzer.analyze_texts(list(texts))
 
     # 5) Insert analyzed posts into the database
     new_count = 0
-    for uri, result, ts_str, clean_text in zip(uris, results, texts):
+    for uri, clean_text, ts_str, result in zip(uris, texts, timestamps, results):
         if not result:
             logging.warning(f"Skipping {uri!r}; sentiment analysis returned nothing.")
             continue

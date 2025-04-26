@@ -17,20 +17,16 @@ from src.data_processor import DataProcessor
 
 from dash.exceptions import PreventUpdate
 
-# ─── CACHE SETUP ────────────────────────────────────────────────────────────
 data_cache = {"signature": None, "outputs": None}
 
-# ─── DATABASE SETUP ─────────────────────────────────────────────────────────
 DATABASE_URL = os.environ["DATABASE_URL"]
 engine = create_engine(DATABASE_URL, echo=False, future=True)
 Session = sessionmaker(bind=engine)
 Base.metadata.create_all(bind=engine)
 
-# ─── FLASK + DASH SETUP ─────────────────────────────────────────────────────
 server = Flask(__name__)
 app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-# ─── LAYOUT ─────────────────────────────────────────────────────────────────
 app.layout = dbc.Container(
     fluid=True,
     children=[

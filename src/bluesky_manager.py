@@ -5,7 +5,6 @@ import logging
 from datetime import datetime, timedelta, timezone, date
 from dateutil.parser import isoparse
 from src.utils.translate_posts import PostTranslator
-from src.utils.json_manager import JsonFileManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 for noisy in ["httpx", "httpcore", "urllib3", "googletrans", "asyncio"]:

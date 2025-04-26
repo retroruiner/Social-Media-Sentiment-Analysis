@@ -127,8 +127,10 @@ app.layout = dbc.Container(
                             html.H5("Word Cloud", className="text-center mb-2"),
                             html.Img(
                                 id="wordcloud",
+                                className="d-block mx-auto",
                                 style={
-                                    "width": "100%",
+                                    "width": "80%",
+                                    "maxWidth": "800px",
                                     "border-radius": "10px",
                                     "box-shadow": "0 2px 6px rgba(0,0,0,0.2)",
                                 },
@@ -139,6 +141,7 @@ app.layout = dbc.Container(
                 ),
             ],
             className="mb-4",
+            justify="center",
         ),
         dbc.Row(
             [

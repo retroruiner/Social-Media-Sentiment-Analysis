@@ -1,7 +1,10 @@
-name: Run Sentiment Pipeline (Manual Trigger)
+name: Run Sentiment Pipeline
 
 on:
-  workflow_dispatch:  
+  workflow_dispatch:
+
+  schedule:
+    - cron: '0 23 * * *'
 
 jobs:
   fetch_and_analyze:
@@ -20,8 +23,9 @@ jobs:
         run: pip install --no-cache-dir -r requirements.txt
 
       - name: 🚀 Run fetch_and_store.py
-        run: python fetch_and_store.py
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          BLUESKY_USERNAME:  ${{ secrets.BLUESKY_USERNAME }}
-          BLUESKY_PASSWORD:  ${{ secrets.BLUESKY_PASSWORD }}
+          DATABASE_URL:     ${{ secrets.DATABASE_URL }}
+          BLUESKY_USERNAME: ${{ secrets.BLUESKY_USERNAME }}
+          BLUESKY_PASSWORD: ${{ secrets.BLUESKY_PASSWORD }}
+          DEFAULT_QUERY: ${{ secrets.DEFAULT_QUERY }}
+        run: python fetch_and_store.py

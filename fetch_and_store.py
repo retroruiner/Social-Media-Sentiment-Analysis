@@ -1,5 +1,6 @@
 import logging
 import datetime
+import os
 
 from sqlalchemy.exc import IntegrityError
 from src.db import Session
@@ -13,7 +14,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s: %(message)s",
 )
 
-DEFAULT_QUERY = "Macron"
+DEFAULT_QUERY = os.getenv("DEFAULT_QUERY", "Kyrgyzstan")
 
 
 def determine_query_and_cleanup(session):

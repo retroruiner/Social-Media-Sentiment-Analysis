@@ -17,80 +17,90 @@ from src.data_processor import DataProcessor
 
 from dash.exceptions import PreventUpdate
 
+# ─── CACHE SETUP ────────────────────────────────────────────────────────────
 data_cache = {"signature": None, "outputs": None}
 
+# ─── DATABASE SETUP ─────────────────────────────────────────────────────────
 DATABASE_URL = os.environ["DATABASE_URL"]
 engine = create_engine(DATABASE_URL, echo=False, future=True)
 Session = sessionmaker(bind=engine)
 Base.metadata.create_all(bind=engine)
 
+# ─── FLASK + DASH SETUP ─────────────────────────────────────────────────────
 server = Flask(__name__)
 app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
+# ─── LAYOUT ─────────────────────────────────────────────────────────────────
 app.layout = dbc.Container(
     fluid=True,
     children=[
         dcc.Interval(
-            id="interval-component", interval=6 * 60 * 60 * 1000, n_intervals=0
+            id="interval-component",
+            interval=6 * 60 * 60 * 1000,  # every 6 hours
+            n_intervals=0,
         ),
         html.H1(
             "Social Media Sentiment Dashboard",
-            className="text-center text-primary my-4 fw-bold",
+            className="text-center my-4 fw-bold",
+            style={"color": "teal"},
         ),
         dbc.Row(
             [
                 dbc.Col(
-                    [
-                        dcc.Input(
-                            id="add-query-input",
-                            type="text",
-                            placeholder="Enter new query…",
-                            className="form-control",
-                        ),
-                    ],
+                    dcc.Input(
+                        id="add-query-input",
+                        type="text",
+                        placeholder="Enter new query…",
+                        className="form-control",
+                    ),
                     md=4,
                 ),
                 dbc.Col(
-                    [
-                        html.Button(
-                            "Add Query",
-                            id="add-query-button",
-                            n_clicks=0,
-                            className="btn btn-primary w-100",
-                        ),
-                    ],
+                    html.Button(
+                        "Add Query",
+                        id="add-query-button",
+                        n_clicks=0,
+                        className="btn btn-success w-100",
+                    ),
                     md=2,
                 ),
                 dbc.Col(
-                    [
-                        html.Label("Current Query (in use)", className="fw-semibold"),
-                        dcc.Input(
-                            id="current-query-display",
-                            type="text",
-                            value="",
-                            disabled=True,
-                            className="form-control",
-                        ),
-                    ],
+                    html.Div(
+                        [
+                            html.Label(
+                                "Current Query (in use)", className="fw-semibold"
+                            ),
+                            dcc.Input(
+                                id="current-query-display",
+                                type="text",
+                                value="",
+                                disabled=True,
+                                className="form-control",
+                            ),
+                        ]
+                    ),
                     md=3,
                 ),
                 dbc.Col(
-                    [
-                        html.Label(
-                            "Next Query (after next fetch)", className="fw-semibold"
-                        ),
-                        dcc.Input(
-                            id="next-query-display",
-                            type="text",
-                            value="",
-                            disabled=True,
-                            className="form-control",
-                        ),
-                    ],
+                    html.Div(
+                        [
+                            html.Label(
+                                "Next Query (after next fetch)", className="fw-semibold"
+                            ),
+                            dcc.Input(
+                                id="next-query-display",
+                                type="text",
+                                value="",
+                                disabled=True,
+                                className="form-control",
+                            ),
+                        ]
+                    ),
                     md=3,
                 ),
             ],
             className="mb-4",
+            align="end",
         ),
         dbc.Row(
             [

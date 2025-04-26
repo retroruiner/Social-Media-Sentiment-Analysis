@@ -24,7 +24,6 @@ def determine_query_and_cleanup(session):
     3) Otherwise (one or both share the same .query) --> delete only the uri=='query' markers, return latest.query.
     4) If none exist --> return DEFAULT_QUERY.
     """
-    # grab up to two newest rows by primary key
     latest_rows = session.query(Post).order_by(Post.id.desc()).limit(2).all()
 
     if len(latest_rows) >= 2:
@@ -38,7 +37,6 @@ def determine_query_and_cleanup(session):
             session.commit()
             return latest.query
 
-        # they match
         logging.info(
             f"Query '{latest.query}' unchanged. Removing only query-marker rows."
         )
@@ -63,15 +61,15 @@ def determine_query_and_cleanup(session):
 def main():
     session = Session()
 
-    # Decide which query to use and clean up markers/tables accordingly
+    # 1) Determine the query and clean up markers/tables
     current_query = determine_query_and_cleanup(session)
     logging.info(f"▶ Using query: {current_query!r}")
 
-    # Now gather existing URIs (after any truncation above)
+    # 2) Fetch existing URIs so we avoid duplicates
     existing_uris = {uri for (uri,) in session.query(Post.uri).all()}
     logging.info(f"Found {len(existing_uris)} existing URIs in DB.")
 
-    # Fetch from BlueSky
+    # 3) Fetch new posts from BlueSky
     bs = BlueSkyManager()
     bs.login()
     data = bs.get_posts(current_query)
@@ -85,22 +83,35 @@ def main():
 
     cleaner = TextCleaner()
     analyzer = SentimentAnalyzer()
-    new_count = 0
 
+    # 4) Collect all new posts into a batch
+    to_process = []
     for p in posts:
         uri = p.get("uri")
         if not uri or uri in existing_uris:
             continue
-
         clean_text = cleaner.clean_text(p.get("text", ""))
-        result = analyzer.analyze_texts([clean_text])
+        ts_str = p.get("createdAt")
+        to_process.append((uri, clean_text, ts_str))
+
+    if not to_process:
+        logging.info("No new posts to analyze.")
+        session.close()
+        return
+
+    uris, texts, timestamps = zip(*to_process)
+    results = analyzer.analyze_texts(list(texts))
+
+    # 5) Insert analyzed posts into the database
+    new_count = 0
+    for uri, clean_text, ts_str, result in zip(uris, texts, timestamps, results):
         if not result:
             logging.warning(f"Skipping {uri!r}; sentiment analysis returned nothing.")
             continue
 
-        label = result[0].get("label")
-        score = result[0].get("score")
-        ts_str = p.get("createdAt")
+        label = result.get("label")
+        score = result.get("score")
+
         created_at = None
         if ts_str:
             try:
@@ -110,7 +121,6 @@ def main():
             except ValueError:
                 logging.warning(f"Bad timestamp {ts_str!r} for {uri!r}")
 
-        # Insert, tagging it with current_query
         db_post = Post(
             uri=uri,
             text=clean_text,

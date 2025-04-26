@@ -34,7 +34,9 @@ app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.BOOTST
 app.layout = dbc.Container(
     fluid=True,
     children=[
-        dcc.Interval(id="interval-component", interval=60_000, n_intervals=0),
+        dcc.Interval(
+            id="interval-component", interval=6 * 60 * 60 * 1000, n_intervals=0
+        ),
         html.H1(
             "Social Media Sentiment Dashboard",
             className="text-center text-primary my-4 fw-bold",
